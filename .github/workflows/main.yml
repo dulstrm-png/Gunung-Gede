@@ -1,48 +1,86 @@
-name: Build DULZ GUNUNG GEDE APK
+name: DULZ GUNUNG GEDE - BUILD APK
 
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
-      - master
+    paths:
+      - "*.zip"
+      - ".github/workflows/build-apk.yml"
 
 jobs:
-  build-android:
+  build:
     runs-on: ubuntu-latest
 
     container:
       image: barichello/godot-ci:4.5.1
 
     steps:
-      - name: Checkout Source
+      - name: Download Repository
         uses: actions/checkout@v4
 
-      - name: Check Godot
+      - name: Cari ZIP Game
+        run: |
+          ZIP=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
+
+          if [ -z "$ZIP" ]; then
+            echo "ZIP GAME TIDAK DITEMUKAN!"
+            exit 1
+          fi
+
+          echo "ZIP ditemukan: $ZIP"
+          echo "GAME_ZIP=$ZIP" >> $GITHUB_ENV
+
+      - name: Extract ZIP
+        run: |
+          mkdir -p game
+          unzip -o "$GAME_ZIP" -d game
+
+      - name: Cari project.godot
+        run: |
+          PROJECT=$(find game -name "project.godot" -type f | head -n 1)
+
+          if [ -z "$PROJECT" ]; then
+            echo "project.godot tidak ditemukan!"
+            find game -maxdepth 3 -type f
+            exit 1
+          fi
+
+          PROJECT_DIR=$(dirname "$PROJECT")
+
+          echo "Project ditemukan:"
+          echo "$PROJECT_DIR"
+
+          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
+
+      - name: Cek Godot
         run: |
           godot --version
 
       - name: Import Project
         run: |
-          godot --headless --editor --quit --path .
+          godot \
+            --headless \
+            --editor \
+            --quit \
+            --path "$PROJECT_DIR"
 
       - name: Build APK
         run: |
           mkdir -p build
+
           godot \
             --headless \
-            --path . \
+            --path "$PROJECT_DIR" \
             --export-debug "Android" \
-            build/DulzGunungGede-debug.apk
+            "$GITHUB_WORKSPACE/build/Dulz-Gunung-Gede.apk"
 
-      - name: Check APK
+      - name: Cek APK
         run: |
           ls -lh build/
-          du -h build/DulzGunungGede-debug.apk
+          file build/Dulz-Gunung-Gede.apk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: DULZ-GUNUNG-GEDE-APK
-          path: build/DulzGunungGede-debug.apk
-          if-no-files-found: error
+          path: build/Dulz-Gunung-Gede.apk
