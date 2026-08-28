@@ -8,55 +8,91 @@ on:
       - ".github/workflows/build-apk.yml"
 
 jobs:
-  build:
+  build-android:
+
     runs-on: ubuntu-latest
 
     container:
       image: barichello/godot-ci:4.5.1
 
     steps:
-      - name: Download Repository
+
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Cari ZIP Game
+      - name: Install Dependencies
+        run: |
+          apt-get update
+          apt-get install -y fontconfig libfontconfig1
+          apt-get clean
+
+      - name: Check Android Environment
+        run: |
+          echo "JAVA_HOME=$JAVA_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+
+          java -version
+          sdkmanager --version
+          adb version
+          godot --version
+
+      - name: Find Game ZIP
         run: |
           ZIP=$(find . -maxdepth 1 -type f -iname "*.zip" | head -n 1)
 
           if [ -z "$ZIP" ]; then
-            echo "ZIP GAME TIDAK DITEMUKAN!"
+            echo "ERROR: ZIP GAME TIDAK DITEMUKAN!"
             exit 1
           fi
 
-          echo "ZIP ditemukan: $ZIP"
-          echo "GAME_ZIP=$ZIP" >> $GITHUB_ENV
+          echo "ZIP GAME:"
+          echo "$ZIP"
 
-      - name: Extract ZIP
+          echo "GAME_ZIP=$ZIP" >> "$GITHUB_ENV"
+
+      - name: Extract Game ZIP
         run: |
+          rm -rf game
           mkdir -p game
+
           unzip -o "$GAME_ZIP" -d game
 
-      - name: Cari project.godot
+      - name: Find Godot Project
         run: |
           PROJECT=$(find game -name "project.godot" -type f | head -n 1)
 
           if [ -z "$PROJECT" ]; then
-            echo "project.godot tidak ditemukan!"
-            find game -maxdepth 3 -type f
+            echo "ERROR: project.godot tidak ditemukan!"
+
+            echo "Isi ZIP:"
+            find game -maxdepth 4 -type f
+
             exit 1
           fi
 
           PROJECT_DIR=$(dirname "$PROJECT")
 
-          echo "Project ditemukan:"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+
+          echo "Godot Project:"
           echo "$PROJECT_DIR"
 
-          echo "PROJECT_DIR=$PROJECT_DIR" >> $GITHUB_ENV
-
-      - name: Cek Godot
+      - name: Install Godot Android Templates
         run: |
-          godot --version
+          mkdir -p ~/.local/share/godot/export_templates
 
-      - name: Import Project
+          godot \
+            --headless \
+            --editor \
+            --quit \
+            --install-android-build-template
+
+      - name: Verify Android Template
+        run: |
+          echo "Export Templates:"
+          find ~/.local/share/godot/export_templates -maxdepth 3 -type f | head -50
+
+      - name: Import Game
         run: |
           godot \
             --headless \
@@ -64,23 +100,32 @@ jobs:
             --quit \
             --path "$PROJECT_DIR"
 
-      - name: Build APK
+      - name: Build Android APK
         run: |
-          mkdir -p build
+          mkdir -p "$GITHUB_WORKSPACE/build"
 
           godot \
             --headless \
             --path "$PROJECT_DIR" \
-            --export-debug "Android" \
+            --export-debug \
+            "Android" \
             "$GITHUB_WORKSPACE/build/Dulz-Gunung-Gede.apk"
 
-      - name: Cek APK
+      - name: Check APK
         run: |
-          ls -lh build/
-          file build/Dulz-Gunung-Gede.apk
+          if [ ! -f "$GITHUB_WORKSPACE/build/Dulz-Gunung-Gede.apk" ]; then
+            echo "ERROR: APK tidak berhasil dibuat!"
+            exit 1
+          fi
+
+          echo "APK BERHASIL DIBUAT!"
+          ls -lh "$GITHUB_WORKSPACE/build/Dulz-Gunung-Gede.apk"
+
+          du -h "$GITHUB_WORKSPACE/build/Dulz-Gunung-Gede.apk"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: DULZ-GUNUNG-GEDE-APK
           path: build/Dulz-Gunung-Gede.apk
+          if-no-files-found: error
